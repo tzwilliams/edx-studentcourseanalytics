@@ -1,5 +1,5 @@
 ## ===================================================== ##
-# Title:        Extracting all edX events for multiple users ####
+# Title:        Extract to CSV all edX events for multiple individual users ####
 # Project:      edX user trajectory analysis
 # 
 # Copyright 2017 Michael Ginda & Krishna Madhavan
@@ -76,7 +76,7 @@ getData <- function() {
 ##saved as either a JSON or CSV formatted file. The function currently set up to save as CSV,
 ##alternatively can be set for user defined action such as format=T csv if format=F, JSON set up possible.
 
-logCapture <- function(curUserIDS,eventLog,fileList,path){      
+logCapture <- function(curUserIDS, eventLog, fileList, path){      
   numStudents <- length(curUserIDS)
   numLogFiles <- length(fileList) 
   for(j in 1:numStudents){
@@ -120,7 +120,9 @@ logCapture <- function(curUserIDS,eventLog,fileList,path){
 
 ######### Main ########## 
 #Creates paths used to locate directory for research data sets and save processing outputs
+## select folder contining one or more "*.log.gz" event log file(s)    (source: edX)
 path_data = tclvalue(tkchooseDirectory())
+## select folder for output files (a file for each user's event log)
 path_output = paste0(tclvalue(tkchooseDirectory()),"/")
 
 #List of Users IDs extracted from student user database
