@@ -64,12 +64,10 @@ require("dplyr")      # for building tibbles (tidy data frames)
 #getData
 ##The getData is a function used to select a CSV file listing student identifiers/course structure 
 #to be CSV is placed in the variable 'data' in the global environment
-getData <- function() {
-  name <- tclvalue(tkgetOpenFile(
-    filetypes = "{ {CSV Files} {.csv} } { {All Files} * }"))
-  if (name == "")
+getData <- function(path_id_list) {
+  if (path_id_list == "")
     return(data.frame()) # Return an empty data frame if no file was selected
-  data <- read.csv(name)
+  data <- read.csv(path_id_list)
   assign("data", data, envir = .GlobalEnv)
   cat("The imported data are in 'data'\n")
 }
@@ -97,6 +95,11 @@ LogCapture <- function(student_IDs, fileList, eventLog, path_output, fileFormat 
   #initialize time tracker
   curID_startTime <- Sys.time()
   
+  #randomize the list of student_id values (to allow multiple instances of the script to run simultaneously better)
+  student_IDs <- as.data.frame(student_IDs$student_id)
+  names(student_IDs) = "student_id"
+  student_IDs$student_id <- sample(student_IDs$student_id)
+  
   #loop through the student IDs
   for(j in 1:numStudents){
     curID <- student_IDs$student_id[j]
@@ -111,7 +114,7 @@ LogCapture <- function(student_IDs, fileList, eventLog, path_output, fileFormat 
     listCompletedIDs <- sub(".json", "", listCompletedIDs)   # remove extension
     listCompletedIDs <- sub(".csv",  "", listCompletedIDs)   # remove extension
     
-    
+
     # build the event file for the current student_id if the student's file 
     # doesn't already exist in the output folder, 
     if(!(curID %in% listCompletedIDs)){
@@ -197,14 +200,22 @@ LogCapture <- function(student_IDs, fileList, eventLog, path_output, fileFormat 
 #Creates paths used to locate directory for research data sets and save processing outputs
 ## select folder contining one or more "*.log.gz" event log file(s)    (source: edX)
 path_data = tclvalue(tkchooseDirectory())
+#TEMP OVERRIDE:: path_data = "/Users/will1630/Dropbox (Contextualized Eval)/Contextualized Eval Team Folder/Data/New_Boeing_Data_April2_2017_DO_NOT_USE_WO_KM_Permission/edx data/MITProfessionalX_SysEngxB2_3T2016/events"
 ## select folder for output files (a file for each user's event log)
 path_output = paste0(tclvalue(tkchooseDirectory()),"/")
+#TEMP OVERRIDE:: path_output = "/Users/will1630/Dropbox (Contextualized Eval)/Contextualized Eval Team Folder/Boeing project/PNAS 2017/data and scripts/2018.02.16. B2 preprocessing/logs/"
 
 #read in from CSV the list of Users IDs extracted from student user database
-getData() #function that reads CSV file into variable 'data'
-data <- data$student_id  # retain only the id column
-names(data) <- "id"   # rename column
-curUserIDS <- data$id # convert dataframe of user ids to integer list (as needed for the function)
+##get CSV path
+path_id_list <- tclvalue(tkgetOpenFile(filetypes = "{ {CSV Files} {.csv} } { {All Files} * }"))
+#TEMP OVERRIDE:: path_id_list = "/Users/will1630/Dropbox (Contextualized Eval)/Contextualized Eval Team Folder/Boeing project/PNAS 2017/data and scripts/2018.02.16. B2 preprocessing/users/access_data. all.csv"
+getData(path_id_list) #function that reads CSV file into variable 'data'
+curUserIDs <- data
+# curUserIDs <- data$student_id  # retain only the id column
+# names(data) <- "id"   # rename column
+# curUserIDS <- data$id # convert dataframe of user ids to integer list (as needed for the function)
+
+
 eventLog <- NULL # create empty variable
 
 ## _Build list of all event files for course####
@@ -215,11 +226,13 @@ fileList <- list.files(full.names = TRUE, recursive = FALSE,
                        pattern = ".log.gz$")
 
 #call the Log Capture function for this list of users
-LogCapture(curUserIDS = curUserIDS, 
+LogCapture(student_IDs = curUserIDs, 
            eventLog = eventLog, 
            fileList = fileList, 
            path_output = path_output,
            fileFormat = "CSV")
+
+
 
 ######### Finishing Details ########## 
 #Indicate completion
