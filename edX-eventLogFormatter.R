@@ -20,10 +20,15 @@
 # Affiliation:  Indiana University, Purdue University
 #
 # 
-# Description:  This script extracts all of a user's activity from the edX event log files in a user 
-#               selected folder.  It outputs the resulting data (all events tied to a single user's ID) 
-#               as a standard a CSV file. 
-#               (*NOTE: the edX provided logs are in NDJSON format, not the typical JSON format.)
+# Description:  This script extracts all of a user's activity from the 
+#               edX event log files in a user selected folder.  
+#               It outputs the resulting data (all events tied to 
+#               a single user's ID) as a standard CSV of JSON file. 
+#               
+#               *NOTE: the edX provided logs are in NDJSON format, not the 
+#               typical JSON format.
+#               *NOTE: it is posible to generate these files much more 
+#               efficently if the data is stored in a database.
 #  
 # File input stack: 
 #            1) A folder contining one or more "*.log.gz" event log file(s)    (source: edX)
