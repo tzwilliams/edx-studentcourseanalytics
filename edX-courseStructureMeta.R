@@ -123,7 +123,7 @@ courseStrMeta <- function(fileList,path){
   temp$id <- factor(temp$id, levels=levels(modList$id))
   names(temp) <- c("id","parent","childOrder")
   modList <- join(modList,temp)
-  modList <- modList[,c(1:4,21,22)]
+  modList <- modList[,c(1:4,20,21)] #TODO(call these columns by name)
   rm(temp)
   
   #Shortens the module ID and the parent ID strings to 32hex
@@ -230,7 +230,7 @@ path_output = tclvalue(tkchooseDirectory())
 
 ## _Build list of all event files for course####
 #Store all the filenames of JSON formatted edX event logs within a user selected directory 
-# (files ending with ".log.gz").
+# (files ending with ".json" -- there should only be one).
 fileList <- list.files(full.names = TRUE, recursive = FALSE, 
                        path = path_data,
                        pattern = ".json$")

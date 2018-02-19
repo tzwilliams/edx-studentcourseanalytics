@@ -1,8 +1,8 @@
 ## ===================================================== ##
-# Title:        Extracting all edX events for multiple users ####
+# Title:        Extract to CSV all edX events for multiple individual users ####
 # Project:      edX user trajectory analysis
 # 
-# Copyright 2017 Michael Ginda & Krishna Madhavan
+# Copyright 2017-18 Michael Ginda & Taylor Williams
 #     Licensed under the Apache License, Version 2.0 (the "License");
 #     you may not use this file except in compliance with the License.
 #     You may obtain a copy of the License at
@@ -16,14 +16,19 @@
 #     limitations under the License.
 #      
 #
-# Authors:      Michael Ginda, Krishna Madhavan, Kerrie Douglas, Taylor Williams
+# Authors:      Michael Ginda, Taylor Williams
 # Affiliation:  Indiana University, Purdue University
 #
 # 
-# Description:  This script extracts all of a user's activity from the edX event log files in a user 
-#               selected folder.  It outputs the resulting data (all events tied to a single user's ID) 
-#               as a standard a CSV file. 
-#               (*NOTE: the edX provided logs are in NDJSON format, not the typical JSON format.)
+# Description:  This script extracts all of a user's activity from the 
+#               edX event log files in a user selected folder.  
+#               It outputs the resulting data (all events tied to 
+#               a single user's ID) as a standard CSV of JSON file. 
+#               
+#               *NOTE: the edX provided logs are in NDJSON format, not the 
+#               typical JSON format.
+#               *NOTE: it is posible to generate these files much more 
+#               efficently if the data is stored in a database.
 #  
 # File input stack: 
 #            1) A folder contining one or more "*.log.gz" event log file(s)    (source: edX)
@@ -40,6 +45,10 @@
 #   2017.10.19. Updated file create function to produce event trajectory logs from a list of student IDs
 #   2017.10.31. Updated function to maintain only relevant fields
 #   2018.02.05. Cleaned Up script and added a manual user list selection function
+#   2018.02.16. Incorporated code from Taylor's fork:
+#                  2017.11.09. updated to allow a list of student_id values to come from an CSV file
+#                  2017.11.10. added user choice for output file type
+#                              added saving processing time and details for each loop to a log file
 #
 ## ===================================================== ##
 
@@ -54,80 +63,165 @@ start <-  proc.time() #save the time (to compute elapsed time of script)
 require("jsonlite")   #for working with JSON files (esp. read and write)
 require("ndjson")     #needed to read the non-standard JSON log files (NDJSON format)
 require("tcltk2")     #for OS independent GUI file and folder selection
+require("dplyr")      # for building tibbles (tidy data frames) 
 
 ####Functions
 #getData
 ##The getData is a function used to select a CSV file listing student identifiers/course structure 
 #to be CSV is placed in the variable 'data' in the global environment
-getData <- function() {
-  name <- tclvalue(tkgetOpenFile(
-    filetypes = "{ {CSV Files} {.csv} } { {All Files} * }"))
-  if (name == "")
+getData <- function(path_id_list) {
+  if (path_id_list == "")
     return(data.frame()) # Return an empty data frame if no file was selected
-  data <- read.csv(name)
+  data <- read.csv(path_id_list)
   assign("data", data, envir = .GlobalEnv)
-  cat("The imported data are in csv_data\n")
+  cat("The imported data are in 'data'\n")
 }
 
-#logCapture 
-##The logCapture function is a modification of code provided by Purdue University team
-##to allow mass extracting individual student's event logs from course event logs, based on known set 
-##of student IDs for an edX course. The function creates a unique log file for each student ID in the list, 
-##saved as either a JSON or CSV formatted file. The function currently set up to save as CSV,
-##alternatively can be set for user defined action such as format=T csv if format=F, JSON set up possible.
+#PrintMinSec
+## The PrintMinSec function takes two Sys.time() values and prints their difference in MM:SS
+PrintMinSecDiff <-  function(fin, ini){
+  dif=as.numeric(difftime(fin, ini, units='min'))
+  return(paste0(sprintf('%02d', as.integer(dif)), ":"
+                ,sprintf('%02.0f', (dif-as.integer(dif))*60)))
+}
 
-logCapture <- function(curUserIDS,eventLog,fileList,path){      
-  numStudents <- length(curUserIDS)
+#LogCapture 
+## The LogCapture function allows mass extracting individual set of student
+#logs based on known set of student IDs for an #   edX course. The function
+#creates a unique log file saved to `path_output` for each student ID in the
+#list, saved as either a CSV file (default), a JSON (fileFormat = "JSON"), or
+#both (fileFormat = "both").
+
+LogCapture <- function(student_IDs, fileList, eventLog, path_output, fileFormat = "CSV"){      
+  #count number of students
+  numStudents <- nrow(student_IDs)
+  #count number of JSON log files 
   numLogFiles <- length(fileList) 
+  #initialize time tracker
+  curID_startTime <- Sys.time()
+  
+  #randomize the list of student_id values (to allow multiple instances of the script to run simultaneously better)
+  student_IDs <- as.data.frame(student_IDs$student_id)
+  names(student_IDs) = "student_id"
+  student_IDs$student_id <- sample(student_IDs$student_id)
+  
+  #loop through the student IDs
   for(j in 1:numStudents){
-    curUser <- curUserIDS[j]
-    message("Processing student ", j, " of ", numStudents)
-    for(i in 1:numLogFiles){
-      curFileName <- fileList[i] 
-      #print update message to console
-      message("Processing log file ", i, " of ", numLogFiles)
-      print(proc.time() - start)
-      #read log data (NOTE: logs are in NDJSON format, not typical JSON format)
-      ndData <- ndjson::stream_in(curFileName)
-      #extract events for a single user, add to the complete eventLog for that user
-      eventLog <- rbind.data.frame(eventLog, subset(ndData,ndData$context.user_id==curUser), fill=TRUE)
-      id <- curUser
-    }
-    #Identifies all columns that are maintained for the rest of the workflow
-    eventLog<-subset(eventLog,select=c("accept_language","agent","augmented.country_code",
-                                       "context.course_id","context.org_id","context.user_id","event",
-                                       "event_source","event_type","time","username","name","session",
-                                       "context.module.display_name","context.module.usage_key",
-                                       "event.problem_id","event.attempts","event.grade","event.max_grade",
-                                       "event.state.seed","event.success","event.answer.file_key",
-                                       "event.attempt_number","event.created_at","event.submission_uuid",
-                                       "event.submitted_at","event.feedback","event.feedback_text",
-                                       "event.rubric.content_hash","event.score_type","event.scored_at",
-                                       "event.scorer_id"))
-    ###Unused columns that could be useful for other courses
-    #event.correctness	event.hint_label	event.hints.0.text	
-    #event.module_id	event.problem_part_id	event.question_type	
-    #event.trigger_type	event.enrollment_mode	event.social_network	
-    #event.answers	event.submission
+    curID <- student_IDs$student_id[j]
     
-    #Write student log file
-    write.csv(x = eventLog, file = paste0(path,"/",id,".csv"),
-              row.names = F)
-    #Clears the event log df for next student
-    eventLog <- NULL
-  }
-}
+    
+    # Build list of all student_id values that have already completed files saved within the path
+    listCompletedIDs <- list.files(full.names = FALSE, recursive = TRUE, 
+                                   path = path_output,
+                                   pattern = "(.json|.csv)$", include.dirs = FALSE)
+    # clean list to retain only IDs
+    listCompletedIDs <- sub(".*/", "", listCompletedIDs)     # remove subdirectory names
+    listCompletedIDs <- sub(".json", "", listCompletedIDs)   # remove extension
+    listCompletedIDs <- sub(".csv",  "", listCompletedIDs)   # remove extension
+    
+
+    # build the event file for the current student_id if the student's file 
+    # doesn't already exist in the output folder, 
+    if(!(curID %in% listCompletedIDs)){
+      #save the start time of processing the current ID
+      curID_startTime[j] <- Sys.time()
+      
+      # loop through all the event files, extract any event matching the current student_id
+      for(i in 1:numLogFiles){
+        curFileName <- fileList[i] 
+        
+        #print update message to console
+        message("Processing log file ", i, " of ", numLogFiles, 
+                " (for student ", j, " of ", numStudents, "; id: ", curID, ")")
+        curID_startTime[j+1]  <- Sys.time()
+        message(PrintMinSecDiff(fin = curID_startTime[j+1], 
+                                ini = curID_startTime[j]), " since curID began",
+                if(j>1) "; prevID took ", PrintMinSecDiff(fin = curID_startTime[j], 
+                                                          ini = curID_startTime[j-1]))
+        print(proc.time() - start)
+        
+        #read log data (NOTE: logs are in NDJSON format, not typical JSON format)
+        ndData  <-   ndjson::stream_in(curFileName)
+        
+        #extract events for a single student, add to the complete eventLog for that student
+        eventLog <- rbind.data.frame(eventLog, 
+                                            subset(ndData,ndData$context.user_id==curID), 
+                                            fill=TRUE)
+      }
+      
+      #Identifies all columns that are maintained for the rest of the workflow
+      eventLog<-subset(eventLog,
+                       select=c("accept_language", "agent",
+                                "augmented.country_code", "context.course_id",
+                                "context.org_id", "context.user_id", "event",
+                                "event_source", "event_type", "time", "username",
+                                "name","session", "context.module.display_name",
+                                "context.module.usage_key", "event.problem_id",
+                                "event.attempts", "event.grade", "event.max_grade",
+                                "event.state.seed", "event.success",
+                                "event.answer.file_key", "event.attempt_number",
+                                "event.created_at", "event.submission_uuid",
+                                "event.submitted_at","event.feedback",
+                                "event.feedback_text", "event.rubric.content_hash",
+                                "event.score_type","event.scored_at",
+                                "event.scorer_id"))
+      ###Unused columns that could be useful for other courses
+      #event.correctness	event.hint_label	event.hints.0.text	
+      #event.module_id	event.problem_part_id	event.question_type	
+      #event.trigger_type	event.enrollment_mode	event.social_network	
+      #event.answers	event.submission
+      
+      #Write student log file
+      # save all of this student's events to chosen filetype
+      if(fileFormat == "JSON"){
+        write_json(x = eventLog, 
+                   path = file.path(path_output, paste0(curID, ".json")))
+      }else if(fileFormat == "CSV"){
+        write.csv(x = eventLog, 
+                  file  = file.path(path_output, paste0(curID, ".csv")), row.names = FALSE)
+      }else if(fileFormat == "both"){
+        write_json(x = eventLog, 
+                   path = file.path(path_output, paste0(curID, ".json")))
+        write.csv(x = eventLog, 
+                  file  = file.path(path_output, paste0(curID, ".csv")), row.names = FALSE)
+      }else{
+        message("invalid file format selected")
+        return()  #exit function
+      }
+      
+      #Clears the event log df for next student
+      eventLog <- NULL
+    
+    }# end of building & saving eventLog
+    
+  }# end of single student loop
+  
+}# end of LogCapture function
+
+
+
 
 ######### Main ########## 
 #Creates paths used to locate directory for research data sets and save processing outputs
+## select folder contining one or more "*.log.gz" event log file(s)    (source: edX)
 path_data = tclvalue(tkchooseDirectory())
+#TEMP OVERRIDE:: path_data = "/Users/will1630/Dropbox (Contextualized Eval)/Contextualized Eval Team Folder/Data/New_Boeing_Data_April2_2017_DO_NOT_USE_WO_KM_Permission/edx data/MITProfessionalX_SysEngxB2_3T2016/events"
+## select folder for output files (a file for each user's event log)
 path_output = paste0(tclvalue(tkchooseDirectory()),"/")
+#TEMP OVERRIDE:: path_output = "/Users/will1630/Dropbox (Contextualized Eval)/Contextualized Eval Team Folder/Boeing project/PNAS 2017/data and scripts/2018.02.16. B2 preprocessing/logs/"
 
-#List of Users IDs extracted from student user database
-getData()
-names(data) <- "id" 
-curUserIDS <- data$id #this converts dataframe of user ids to integer list needed for the function
-eventLog <- NULL
+#read in from CSV the list of Users IDs extracted from student user database
+##get CSV path
+path_id_list <- tclvalue(tkgetOpenFile(filetypes = "{ {CSV Files} {.csv} } { {All Files} * }"))
+#TEMP OVERRIDE:: path_id_list = "/Users/will1630/Dropbox (Contextualized Eval)/Contextualized Eval Team Folder/Boeing project/PNAS 2017/data and scripts/2018.02.16. B2 preprocessing/users/access_data. all.csv"
+getData(path_id_list) #function that reads CSV file into variable 'data'
+curUserIDs <- data
+# curUserIDs <- data$student_id  # retain only the id column
+# names(data) <- "id"   # rename column
+# curUserIDS <- data$id # convert dataframe of user ids to integer list (as needed for the function)
+
+
+eventLog <- NULL # create empty variable
 
 ## _Build list of all event files for course####
 #Store all the filenames of JSON formatted edX event logs within a user selected directory 
@@ -136,8 +230,14 @@ fileList <- list.files(full.names = TRUE, recursive = FALSE,
                        path = path_data,
                        pattern = ".log.gz$")
 
-#Log Capture function for list of users
-logCapture(curUserIDS,eventLog,fileList,path=path_output)
+#call the Log Capture function for this list of users
+LogCapture(student_IDs = curUserIDs, 
+           eventLog = eventLog, 
+           fileList = fileList, 
+           path_output = path_output,
+           fileFormat = "CSV")
+
+
 
 ######### Finishing Details ########## 
 #Indicate completion
